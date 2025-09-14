@@ -1,3 +1,6 @@
 /target
+<<<<<<< HEAD
 *.json
+=======
+>>>>>>> b99c73f853fae2b7dd4bcb5ecb42c036173a5e38
 *.db
