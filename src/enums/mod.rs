@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum DownloadStatusEnum {
-    IoError(std::io::Error),
-    JsonError(serde_json::Error),
+    IoError(String),        // Store error description as String
+    JsonError(String),      // Store error description as String
     YtDlpError(String),
     Success,
     Pendent,

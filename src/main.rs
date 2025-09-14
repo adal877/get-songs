@@ -4,6 +4,7 @@ mod structs;
 mod enums;
 
 use handlers::*;
+use rusqlite::Connection;
 use utils::*;
 use structs::*;
 
@@ -24,24 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     };
 
-    println_alert(
-        &format!(
-            "json: {}",
-            json_data
-        )
-    );
-
     // Deserialize the json string into a rust struct
     let download_entries: Vec<DownloadEntry> = serde_json::from_str(&json_data)?;
     // Handles the failed entries
     let mut download_status_entries = Vec::new();
-
-    println_success(
-        &format!(
-            "json_data: {:?}",
-            download_entries
-        )
-    );
 
     for entry in download_entries {
         println_alert(&format!("Processing playlist from: {}", entry.url));
@@ -101,6 +88,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let sqlitedb_connection = Connection::open("songs.db")?;
+
+    sqlitedb_connection.execute(
+        "CREATE TABLE IF NOT EXISTS download_status (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  album_url TEXT NOT NULL,
+                  album_name TEXT NOT NULL,
+                  song_name TEXT NOT NULL,
+                  song_url TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  author_name TEXT NOT NULL,
+                  genre TEXT NOT NULL,
+                  comment TEXT NOT NULL
+                  )",
+        [],
+    )?;
+    for result in &download_status_entries {
+        if let Ok(download_result) = result {
+            sqlitedb_connection.execute(
+                "INSERT INTO download_status (album_url, album_name, song_name, song_url, status, author_name, genre, comment) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                [
+                    &download_result.album_url,
+                    &download_result.album_name,
+                    &download_result.song_name,
+                    &download_result.song_url,
+                    &format!("{:?}", download_result.status),
+                    &download_result.author_name,
+                    &download_result.genre,
+                    &download_result.comment,
+                ],
+            )?;
+        }
+        println_alert("##################################################");
+        println!("Inserted download result into database: {:?}", result);
+        println_alert("##################################################");
+    }
+
+    println_alert("##################################################");
     println_alert(
         &format!(
             "{} entries processed.\nEntries summary: {:?}",
@@ -108,6 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             download_status_entries
         )
     );
+    println_alert("##################################################");
 
     Ok(())
 }

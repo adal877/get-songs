@@ -33,7 +33,12 @@ pub fn deserialize_ytdlp_handler(playlist_url: &str) -> Result<Value, Box<dyn st
     Ok(v)
 }
 
-pub fn download_song_handler(url: &str, output: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub fn download_song_handler(
+    url: &str,
+    output: &PathBuf,
+    album: Album,
+    track: Track,
+) -> Result<(), Box<dyn std::error::Error>> {
 
     let status = Command::new("yt-dlp")
         .arg("--ignore-errors")
@@ -44,9 +49,14 @@ pub fn download_song_handler(url: &str, output: &PathBuf) -> Result<(), Box<dyn 
         .arg("wav")
         .arg("--audio-quality")
         .arg("160k")
+        .arg("--embed-thumbnail")
         .arg("--output")
-        .arg(output) // Defines the output template
-        .arg(url) // The video url
+        .arg(output)
+        .arg("--postprocessor-args")
+        .arg(format!(
+            "ffmpeg:-metadata album=\"{}\" -metadata genre=\"{}\" -metadata title=\"{}\" -metadata artist=\"{}\" -metadata comment=\"{}\"",
+            album.album_name, album.genre, track.track_name, track.author_name, track.comment.unwrap_or_else(|| "No comment provided".to_string())))
+        .arg(url)
         .status()?;
 
     if status.success() {
@@ -77,12 +87,14 @@ pub fn download_track_helper(track: Track, album: Album, album_dir: PathBuf) -> 
     let mut output_path = album_dir.clone();
     output_path.push(format!("{}.%(ext)s", safe_track_name));
 
-    match download_song_handler(&track.url, &output_path) {
+    match download_song_handler(&track.url, &output_path, album.clone(), track.clone()) {
         Ok(_) => {
             println_success(&format!("Successfully downloaded: {}", track.track_name));
             Ok(DownloadResult::new(
+                album.url.clone(),
                 album.album_name.clone(),
                 track.track_name.clone(),
+                track.url.clone(),
                 album.author_name.clone(),
                 album.genre.clone(),
                 album.comment.clone(),
@@ -92,8 +104,10 @@ pub fn download_track_helper(track: Track, album: Album, album_dir: PathBuf) -> 
         Err(e) => {
             println_err(&format!("Failed to download: {}. Error: {}", track.url, e));
             Ok(DownloadResult::new(
+                album.url.clone(),
                 album.album_name.clone(),
                 track.track_name.clone(),
+                track.url.clone(),
                 album.author_name.clone(),
                 album.genre.clone(),
                 album.comment.clone(),

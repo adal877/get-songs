@@ -4,10 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DownloadResult {
+    pub album_url: String,
     pub album_name: String,
     pub song_name: String,
+    pub song_url: String,
     pub author_name: String,
     pub genre: String,
     pub comment: String,
@@ -15,10 +17,12 @@ pub struct DownloadResult {
 }
 
 impl DownloadResult {
-    pub fn new(album_name: String, song_name: String, author_name: String, genre: String, comment: String, status: DownloadStatus) -> Self {
+    pub fn new(album_url: String, album_name: String, song_name: String, song_url: String, author_name: String, genre: String, comment: String, status: DownloadStatus) -> Self {
         Self {
+            album_url,
             album_name,
             song_name,
+            song_url,
             author_name,
             genre,
             comment,
