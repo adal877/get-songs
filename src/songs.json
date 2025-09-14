@@ -4,8 +4,17 @@
         "url": "https://www.youtube.com/watch?v=rbWq6osDBpA&list=PLh8Wm_EGriA0GVy6XhshYMMu3jnNBL2Rt",
         "album": {
             "author_name": "Highly Suspect",
-            "playlist_name": "Myster Asylum",
             "genre": "Rock",
+            "comment": "Downloaded using yt-dlp and get-songs Rust tool"
+        }
+    },
+    {
+        "save_to": "/var/home/adal/Music",
+        "url": "https://www.youtube.com/watch?v=VO0f5Q99BD8&list=PLEE-L5Au_Xzc1yCm0W6zCBZg41EOfsEzF",
+        "album": {
+            "author_name": "Djonga",
+            "genre": "Rap",
+            "playlist_name": "Nu",
             "comment": "Downloaded using yt-dlp and get-songs Rust tool"
         }
     }
