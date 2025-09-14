@@ -1,2 +1,3 @@
 /target
 *.db
+./src/songs.json
