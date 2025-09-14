@@ -40,20 +40,20 @@ pub struct DownloadResult {
 }
 
 impl DownloadResult {
-    pub fn new(album_name: String, song_name: String, status: DownloadStatus) -> Self {
+    pub fn new(album_name: String, song_name: String, author_name: String, genre: String, comment: String, status: DownloadStatus) -> Self {
         Self {
             album_name,
             song_name,
-            author_name: String::new(),
-            genre: String::new(),
-            comment: String::new(),
+            author_name,
+            genre,
+            comment,
             status,
         }
     }
 }
 
 // Struct to define the desired informations
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Clone)]
 struct Track {
     url: String,
     author_name: String,
@@ -69,34 +69,38 @@ impl Track {
 }
 
 // Struct to define the desired informations
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Clone)]
 struct Album {
     url: String,
-    author_name: Option<String>,
+    author_name: String,
     album_name: String,
     genre: String,
-    comment: Option<String>,
+    comment: String,
     tracks: Vec<Track>,
 }
 
 impl Album {
     pub fn new(url: String, author_name: String, album_name: String, genre: String, comment: String, tracks: Vec<Track>) -> Self {
-        Self { url, author_name: Some(author_name), album_name, genre, comment: Some(comment), tracks}
+        Self { url, author_name, album_name, genre, comment, tracks}
     }
 }
 
-// Main struct to define the cli parameters
+// Struct para representar o payload de um álbum
+// Corresponde à estrutura do JSON de entrada
+#[derive(Serialize, Deserialize, Debug)]
+struct AlbumPayload {
+    author_name: String,
+    playlist_name: Option<String>,
+    genre: String,
+    comment: Option<String>,
+}
+
+// Struct principal para deserializar o JSON de entrada
 #[derive(Serialize, Deserialize, Debug)]
 struct DownloadEntry {
     save_to: PathBuf,
     url: String,
-    album: Album,
-}
-
-impl DownloadEntry {
-    pub fn new(save_to: PathBuf, url: String, album: Album) -> Self {
-        Self { save_to, url, album }
-    }
+    album: AlbumPayload,
 }
 
 #[derive(Parser, Debug)]
@@ -162,12 +166,12 @@ pub fn download_song_handler(url: &str, output: &PathBuf) -> Result<(), Box<dyn 
     Ok(())
 }
 
-pub fn download_path_handler(path: &PathBuf, author_name: String, playlist_name: String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn download_path_handler(path: &PathBuf, author_name: String, album_name: String) -> Result<(), Box<dyn std::error::Error>> {
     // Builds the destiny path ~/Music/<Author>/<Playlist>
     let mut music_dir =
         dirs::audio_dir().unwrap_or_else(|| path.to_path_buf()).to_path_buf();
     music_dir.push(&author_name);
-    music_dir.push(&playlist_name);
+    music_dir.push(&album_name);
 
     // Builds the dir if it didnt exists
     std::fs::create_dir_all(&music_dir)?;
@@ -189,99 +193,107 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     };
 
+    println_alert(
+        &format!(
+            "json: {}",
+            json_data
+        )
+    );
+
     // Deserialize the json string into a rust struct
-    let album_to_download: Vec<DownloadEntry> = serde_json::from_str(&json_data)?;
+    let download_entries: Vec<DownloadEntry> = serde_json::from_str(&json_data)?;
     // Handles the failed entries
     let mut download_status_entries: Vec<DownloadResult> = Vec::new();
 
-    // Iterate over each entry/album to start the download
-    for entry in album_to_download {
-        println_alert(
-            &format!(
-                "Processing: {} -> {}. To: {:?}",
-                entry.album.album_name, entry.url, entry.save_to.display()
-            )
-        );
+    println_success(
+        &format!(
+            "json_data: {:?}",
+            download_entries
+        )
+    );
 
-        // Iterate over each song in the album
-        match deserialize_ytdlp_handler(&entry.url) {
-            Ok(playlist_json) => {
-                println_success(&format!("Successfully fetched playlist info for: {}", entry.url));
+    for entry in download_entries {
+        println_alert(&format!("Processing playlist from: {}", entry.url));
 
-                let album_entries: &Vec<Value> = playlist_json["entries"].as_array().ok_or("Entries field not found or is not an array")?;
-                let author_name = entry.album.author_name.clone().unwrap_or_else(|| album_entries[0]["uploader"].as_str().unwrap_or("Unknown Artist").to_string());
-                let album_name = entry.album.album_name.clone();
+        let playlist_json = deserialize_ytdlp_handler(&entry.url)?;
+        println_success(&format!("Successfully fetched playlist info for: {}", entry.url));
 
-                let tracks: Vec<Track> = album_entries.iter().filter_map(|item| {
-                    let video_url = item["url"].as_str()?.to_string();
-                    let track_name = item["title"].as_str()?.to_string();
-                    Some(Track::new(
-                        video_url.clone(),
-                        author_name.clone(),
-                        track_name,
-                        entry.album.genre.clone(),
-                        video_url,
-                    ))
-                }).collect();
-                let album = Album::new(
-                    entry.url.clone(),
-                    author_name.clone(),
-                    album_name.clone(),
-                    entry.album.genre.clone(),
-                    entry.url.clone(),
-                    tracks,
-                );
+        let album_entries = playlist_json["entries"].as_array().ok_or("Entries field not found or is not an array")?;
+        let album_name = entry.album.playlist_name.unwrap_or_else(|| playlist_json["title"].as_str().unwrap_or("Unknown Album").to_string());
+        let author_name = entry.album.author_name.clone();
+        let genre = entry.album.genre.clone();
+        let comment = entry.album.comment.clone().unwrap_or_else(|| "No comment provided".to_string());
 
-                let album_dir = match download_path_handler(
-                    &entry.save_to,
-                    album.author_name.clone().unwrap_or_else(|| "Unknown Artist".to_string()),
-                    album.album_name.clone()
-                ) {
-                    Ok(_) => {
-                        let mut dir = entry.save_to.clone();
-                        dir.push(&album.author_name.clone().unwrap_or_else(|| "Unknown Artist".to_string()));
-                        dir.push(&album.album_name.clone());
-                        dir
-                    },
-                    Err(e) => {
-                        println_err(&format!("Failed to create directory: {}. Error: {}", entry.save_to.display(), e));
-                        continue;
-                    }
-                };
+        let tracks: Vec<Track> = album_entries.iter().filter_map(|item| {
+            let video_url = item["url"].as_str()?.to_string();
+            let track_name = item["title"].as_str()?.to_string();
+            Some(Track {
+                url: video_url,
+                author_name: author_name.clone(),
+                genre: genre.clone(),
+                comment: Some(comment.clone()),
+                track_name,
+            })
+        }).collect();
 
-                // Iterate over each track and download it
-                for track in &album.tracks {
-                    let mut output_path = album_dir.clone();
-                    let safe_track_name = track.track_name.replace("/", "_").replace("\\", "_");
-                    output_path.push(format!("{}.%(ext)s", safe_track_name));
+        let album = Album {
+            url: entry.url.clone(),
+            author_name: author_name.clone(),
+            album_name: album_name.clone(),
+            genre: genre.clone(),
+            comment: comment.clone(),
+            tracks,
+        };
 
-                    match download_song_handler(&track.url, &output_path) {
-                        Ok(_) => {
-                            println_success(&format!("Successfully downloaded: {}", track.track_name));
-                            download_status_entries.push(
-                                DownloadResult::new(
-                                    album.album_name.clone(),
-                                    track.track_name.clone(),
-                                    DownloadStatus::Success
-                                )
-                            );
-                        },
-                        Err(e) => {
-                            println_err(&format!("Failed to download: {}. Error: {}", track.url, e));
-                            download_status_entries.push(
-                                DownloadResult::new(
-                                    album.album_name.clone(),
-                                    track.track_name.clone(),
-                                    DownloadStatus::YtDlpError(format!("Failed to download: {}", e))
-                                )
-                            );
-                        }
-                    }
-                } // End of track iteration
+        let album_dir = match download_path_handler(
+            &entry.save_to,
+            album.author_name.clone(),
+            album.album_name.clone()
+        ) {
+            Ok(_) => {
+                let mut dir = entry.save_to.clone();
+                dir.push(&album.author_name);
+                dir.push(&album.album_name);
+                dir
             },
             Err(e) => {
-                println_err(&format!("Failed to fetch playlist info for: {}. Error: {}", entry.url, e));
+                println_err(&format!("Failed to create directory: {}. Error: {}", entry.save_to.display(), e));
                 continue;
+            }
+        };
+
+        for track in &album.tracks {
+            let safe_track_name = track.track_name.replace("/", "_").replace("\\", "_");
+            let mut output_path = album_dir.clone();
+            output_path.push(format!("{}.%(ext)s", safe_track_name));
+
+            match download_song_handler(&track.url, &output_path) {
+                Ok(_) => {
+                    println_success(&format!("Successfully downloaded: {}", track.track_name));
+                    download_status_entries.push(
+                        DownloadResult::new(
+                            album.album_name.clone(),
+                            track.track_name.clone(),
+                            album.author_name.clone(),
+                            album.genre.clone(),
+                            album.comment.clone(),
+                            DownloadStatus::Success
+                        )
+                    );
+                },
+                Err(e) => {
+                    println_err(&format!("Failed to download: {}. Error: {}", track.url, e));
+                    download_status_entries.push(
+                        DownloadResult::new(
+                            album.album_name.clone(),
+                            track.track_name.clone(),
+                            album.author_name.clone(),
+                            album.genre.clone(),
+                            album.comment.clone(),
+                            DownloadStatus::YtDlpError(format!("Failed to download: {}", e))
+                        )
+                    );
+                }
             }
         }
     }
